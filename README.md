@@ -4,15 +4,13 @@ Using transformer model to predict news from 'AG NEWS' datasets.
 
 # Install libraries
 ```bash
-	pip install -r requirements.txt
-	
+   pip install -r requirements.txt	
 ```
 
 
 # Training
 ```bash
-	python train.py
-	
+   python train.py	
 ```
 
 
