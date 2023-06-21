@@ -1,5 +1,18 @@
 token_filename = 'tokenizer-wiki'
 current_folder = '.'
 vocab_size = 30_000
-
-
+epochs = 40
+weigth_decay = 0
+lr = 0.00015
+gamma = 0.9
+snapshot_interval = 10 # save model each 10 epoch
+model_folder = '/model'
+data_folder = '/dataset'
+ff_hidden_size = 16
+n_heads = 4
+n_layers = 4
+attention_dim = 16
+n_classes = 4
+dropout = 0.2
+batch_size = 128
+seed = 1337
