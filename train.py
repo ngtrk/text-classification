@@ -7,7 +7,7 @@ import numpy as np
 from transformers import PreTrainedTokenizerFast
 from datasets import load_dataset
 from datasets import DatasetDict
-import params as pr
+import params
 import tokenizer as tk
 import os
 
@@ -56,7 +56,6 @@ def save(net, txt_dict, path):
     torch.save(dict_m, path)
 
 
-
 def collate_fn(l):
     temp = []
     for x in l:
@@ -74,18 +73,18 @@ def collate_fn(l):
     return tx, tx_mask, ty
 
 
-print('Loading dataset...')
-dataset = load_dataset('ag_news')
-
-
 
 def get_tokenizer():
-    if ''.join([pr.token_filename, '.json']) not in os.listdir(pr.current_folder):
+    param = params.get_args()
+    
+    
+    if ''.join([param.token_filename, '.json']) not in os.listdir(param.current_folder):
         tk.main()
         
+        
     token = PreTrainedTokenizerFast(
-        model_max_length=pr.vocab_size,
-        tokenizer_file="tokenizer-wiki.json",
+        model_max_length=param.vocab_size,
+        tokenizer_file=f"{param.token_filename}.json",
         bos_token="<s>",
         eos_token="</s>",
         unk_token="<unk>",
@@ -94,72 +93,83 @@ def get_tokenizer():
         sep_token="<sep>",
         mask_token="<mask>",
         padding_side="left")
+    
     return token
-
-
-print('Tokenizer data...')
-tok = get_tokenizer()
-
-train_ds = dataset['train'].train_test_split(test_size=.2, seed=pr.seed)
-ds_splits = DatasetDict({
-    'train': train_ds['train'],
-    'val': train_ds['test'],
-    'test': dataset['test']
-})
 
 
 
 def process_ds(examples):
+    tok = get_tokenizer()
     return tok(examples['text'], truncation=True)
 
 
-print('Mapping data...')
-tokenized_ds = ds_splits.map(process_ds, batched=True)
 
-
-os.makedirs(pr.model_folder, exist_ok=True)
-os.makedirs(pr.data_folder, exist_ok=True)
-
-variables = {
-    'train': {'var': None, 'path': f'{pr.data_folder}/train.lmdb'},
-    'test': {'var': None, 'path': f'{pr.data_folder}/test.lmdb'},
-    'params': {'var': None, 'path': f'{pr.data_folder}/params.pkl'}
+if __name__ == '__main__':
+    pr = params.get_args()
     
-}
-
-
-tr_loader = DataLoader(tokenized_ds['train'], batch_size=pr.batch_size, shuffle=True, collate_fn=collate_fn,  pin_memory=True)
-te_loader = DataLoader(tokenized_ds['val'], batch_size=pr.batch_size, shuffle=False, collate_fn=collate_fn, pin_memory=True)
-
-dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-print("Creating model...")
-net = TransformerCls(n_classes=pr.n_classes,
-                        src_vocab_size=pr.vocab_size,
-                        h=pr.n_heads,
-                        d_model=pr.attention_dim,
-                        d_ff=pr.ff_hidden_size,
-                        dropout=pr.dropout,
-                        n_layer=pr.n_layers)
-
-
-net.to(dev)
-optimizer = torch.optim.Adam(filter(lambda x: x.requires_grad, net.parameters()), lr=pr.lr, weight_decay=pr.weigth_decay)
-criterion = nn.CrossEntropyLoss()
-
-
-for epoch in range(1, pr.epochs + 1):
-    train(epoch, net, tr_loader, dev, msg='training...', optimize=True, optimizer=optimizer, criterion=criterion)
-    train(epoch, net, te_loader, dev, msg='testing...', criterion=criterion)
+    print('Loading dataset...')
+    dataset = load_dataset('ag_news')
     
-    if (epoch % pr.snapshot_interval == 0) and (epoch > 0):
-        path = f'{pr.model_folder}/model_epoch_{epoch}.pth'
-        save(net, variables['params']['var'], path=path)
+    n_classes = len(set(dataset['train']['label']))
+
+    train_ds = dataset['train'].train_test_split(test_size=.2, seed=pr.seed)
+    ds_splits = DatasetDict({
+        'train': train_ds['train'],
+        'val': train_ds['test'],
+        'test': dataset['test']
+    })
+    
+    print('Mapping data...')
+    tokenized_ds = ds_splits.map(process_ds, batched=True)
+
+
+    os.makedirs(pr.model_folder, exist_ok=True)
+    os.makedirs(pr.data_folder, exist_ok=True)
+
+    variables = {
+        'train': {'var': None, 'path': f'{pr.data_folder}/train.lmdb'},
+        'test': {'var': None, 'path': f'{pr.data_folder}/test.lmdb'},
+        'params': {'var': None, 'path': f'{pr.data_folder}/params.pkl'}
         
+    }
 
-if pr.epochs > 0:
-    path = f'{pr.model_folder}/model_epoch_{pr.epochs}'
-    save(net, variables['params']['var'], path=path)
 
+    tr_loader = DataLoader(tokenized_ds['train'], batch_size=pr.batch_size, shuffle=True, collate_fn=collate_fn,  pin_memory=True)
+    te_loader = DataLoader(tokenized_ds['val'], batch_size=pr.batch_size, shuffle=False, collate_fn=collate_fn, pin_memory=True)
+
+    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    
+    print("Creating model...")
+    net = TransformerCls(n_classes=n_classes,
+                            src_vocab_size=pr.vocab_size,
+                            h=pr.n_heads,
+                            d_model=pr.attention_dim,
+                            d_ff=pr.ff_hidden_size,
+                            dropout=pr.dropout,
+                            n_layer=pr.n_layers)
+
+
+    net.to(dev)
+    optimizer = torch.optim.Adam(filter(lambda x: x.requires_grad, net.parameters()), lr=pr.lr, weight_decay=pr.weight_decay)
+    criterion = nn.CrossEntropyLoss()
+
+
+    for epoch in range(1, pr.epochs + 1):
+        train(epoch, net, tr_loader, dev, msg='training...', optimize=True, optimizer=optimizer, criterion=criterion)
+        train(epoch, net, te_loader, dev, msg='testing...', criterion=criterion)
+        
+        if (epoch % pr.snapshot_interval == 0) and (epoch > 0):
+            path = f'{pr.model_folder}/model_epoch_{epoch}.pth'
+            save(net, variables['params']['var'], path=path)
+            
+
+    if pr.epochs > 0:
+        path = f'{pr.model_folder}/model_epoch_{pr.epochs}.pth'
+        save(net, variables['params']['var'], path=path)
+
+    
+
+
+    
 

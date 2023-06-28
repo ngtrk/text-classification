@@ -9,7 +9,7 @@ from tokenizers import (
     Tokenizer
 )
 from tokenizers.processors import TemplateProcessing
-import params as pr
+import params
 
 
 def get_file(folder, wiki_file, files):
@@ -33,6 +33,7 @@ def get_file(folder, wiki_file, files):
 
 def main():
     wiki_file = 'wikitext-103-raw'
+    pr = params.get_args()
     cur_folder = pr.current_folder
     files = os.listdir(cur_folder)
     
