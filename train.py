@@ -5,8 +5,8 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 import numpy as np
 from transformers import PreTrainedTokenizerFast
-from datasets import load_dataset
-from datasets import DatasetDict
+from datasets import load_dataset, DatasetDict
+
 import params
 import tokenizer as tk
 import os
@@ -19,18 +19,15 @@ def train(epoch, net, dataset, dev, msg='val/test', optimize=False, optimizer=No
     epoch_loss = 0
     epoch_acc = 0
     dic_metrics ={'loss': 0, 'acc': 0, 'lr': 0}
-    # n_classes = len(list(net.parameters())[-1])
     
     with tqdm(total=len(dataset), desc=f'Epoch {epoch} - {msg}') as pbar:
         for i, (tx, mask, ty) in enumerate(dataset):
             data = (tx, mask, ty)
-            
             data = [x.to(dev) for x in data]
             
             if optimize:
                 optimizer.zero_grad()
                 
-            net.to(dev)
             
             out = net(data[0], data[1])
             loss = criterion(out, data[2])
@@ -48,12 +45,6 @@ def train(epoch, net, dataset, dev, msg='val/test', optimize=False, optimizer=No
             
             pbar.update(1)
             pbar.set_postfix(dic_metrics)
-
-
-def save(net, txt_dict, path):
-    dict_m = net.state_dict()
-    dict_m['txt_dict'] = txt_dict
-    torch.save(dict_m, path)
 
 
 def collate_fn(l):
@@ -104,38 +95,36 @@ def process_ds(examples):
 
 
 
-if __name__ == '__main__':
-    pr = params.get_args()
-    
+def load_data(pr):
     print('Loading dataset...')
     dataset = load_dataset('ag_news')
-    
     n_classes = len(set(dataset['train']['label']))
-
     train_ds = dataset['train'].train_test_split(test_size=.2, seed=pr.seed)
     ds_splits = DatasetDict({
         'train': train_ds['train'],
         'val': train_ds['test'],
         'test': dataset['test']
     })
+    return ds_splits, n_classes
+
+
+
+if __name__ == '__main__':
+    pr = params.get_args()
+    
+    data, n_classes = load_data(pr)
     
     print('Mapping data...')
-    tokenized_ds = ds_splits.map(process_ds, batched=True)
+    tokenized_train = data['train'].map(process_ds, batched=True)
+    tokenized_val = data['val'].map(process_ds, batched=True)
 
 
     os.makedirs(pr.model_folder, exist_ok=True)
     os.makedirs(pr.data_folder, exist_ok=True)
 
-    variables = {
-        'train': {'var': None, 'path': f'{pr.data_folder}/train.lmdb'},
-        'test': {'var': None, 'path': f'{pr.data_folder}/test.lmdb'},
-        'params': {'var': None, 'path': f'{pr.data_folder}/params.pkl'}
-        
-    }
 
-
-    tr_loader = DataLoader(tokenized_ds['train'], batch_size=pr.batch_size, shuffle=True, collate_fn=collate_fn,  pin_memory=True)
-    te_loader = DataLoader(tokenized_ds['val'], batch_size=pr.batch_size, shuffle=False, collate_fn=collate_fn, pin_memory=True)
+    train_loader = DataLoader(tokenized_train, batch_size=pr.batch_size, shuffle=True, collate_fn=collate_fn,  pin_memory=True)
+    val_loader = DataLoader(tokenized_val, batch_size=pr.batch_size, shuffle=False, collate_fn=collate_fn, pin_memory=True)
 
     dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -156,20 +145,16 @@ if __name__ == '__main__':
 
 
     for epoch in range(1, pr.epochs + 1):
-        train(epoch, net, tr_loader, dev, msg='training...', optimize=True, optimizer=optimizer, criterion=criterion)
-        train(epoch, net, te_loader, dev, msg='testing...', criterion=criterion)
+        train(epoch, net, train_loader, dev, msg='TRAINING...', optimize=True, optimizer=optimizer, criterion=criterion)
+        train(epoch, net, val_loader, dev, msg='VALIDATING...', criterion=criterion)
         
         if (epoch % pr.snapshot_interval == 0) and (epoch > 0):
             path = f'{pr.model_folder}/model_epoch_{epoch}.pth'
-            save(net, variables['params']['var'], path=path)
+            torch.save(net.state_dict(), path)
             
 
     if pr.epochs > 0:
         path = f'{pr.model_folder}/model_epoch_{pr.epochs}.pth'
-        save(net, variables['params']['var'], path=path)
+        torch.save(net.state_dict(), path)
 
-    
-
-
-    
 

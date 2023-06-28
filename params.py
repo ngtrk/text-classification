@@ -4,8 +4,8 @@ import argparse
 def get_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--data_folder", type=str, default="../dataset")
-    parser.add_argument("--model_folder", type=str, default="../model")
+    parser.add_argument("--data_folder", type=str, default="dataset/")
+    parser.add_argument("--model_folder", type=str, default="model/")
 
 
     parser.add_argument("--attention_dim", type=int, default=16)
@@ -22,7 +22,7 @@ def get_args():
     parser.add_argument("--vocab_size", type=int, default=30000)
  
     parser.add_argument("--batch_size", type=int, default=128, help="")
-    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--snapshot_interval", type=int, default=10, help="Save model every n epoch")
 
     parser.add_argument("--seed", type=int, default=1337)
